@@ -1,0 +1,64 @@
+service: mpp-testing-custom-apis
+
+# Use the serverless-webpack plugin to transpile ES6
+plugins:
+  - serverless-webpack
+  - serverless-offline
+  - serverless-pseudo-parameters
+
+# serverless-webpack configuration
+# Enable auto-packing of external modules
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  pseudoParameters:
+    allowReferences: false
+  ssmParamNamespace: /mpp-clients/testing/${self:custom.stage}
+  snsTopicName: mpp-testing-custom-api-${self:custom.stage}-topics
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  stage: dev
+  region: ap-northeast-1
+  environment: ${file(env.yml):${self:custom.stage}}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - ssm:GetParameter
+        - ssm:PutParameter
+        - ssm:GetParameters
+        - ssm:GetParametersByPath
+        - ssm:GetParameterHistory
+      Resource:
+        - "arn:aws:ssm:#{AWS::Region}:#{AWS::AccountId}:parameter${self:custom.ssmParamNamespace}/*"
+    - Effect: Allow
+      Action:
+        - sns:Publish
+      Resource:
+        - "arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:${self:custom.snsTopicName}"
+    - Effect: "Allow"
+        Action:
+          - sqs:DeleteMessage
+          - sqs:GetQueueUrl
+          - sqs:SendMessage
+          - sqs:GetQueueAttributes
+        Resource: "arn:aws:sqs:${self:provider.region}:*:JobsQueue"
+    - Effect: "Allow"
+      Action:
+        - sqs:DeleteMessage
+        - sqs:GetQueueUrl
+        - sqs:SendMessage
+        - sqs:GetQueueAttributes
+      Resource: "arn:aws:sqs:${self:provider.region}:*:DeadLetterQueue"
+
+functions:
+  bestDarnUpdateTask:
+    handler: handlers/bestdarn-system/update-task-handler.main
+    timeout: 30
+    reservedConcurrency: 1
+
+resources:
+  - ${file(resources/sns-topic.yml)}
