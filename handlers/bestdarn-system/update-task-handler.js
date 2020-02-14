@@ -1,14 +1,15 @@
 import AbstractHandler from '../abstract-handler'
-// import helper from '../../lib/helper'
+import helper from '../../lib/helper'
 import bestdarnSystemAxios from '../../lib/bestdarn-system-axios'
 
 export class BestDarnSystemUpdateTaskHandler extends AbstractHandler {
   async main (callback) {
     try {
-      // const { SPResults: jobData } = this._event
-      console.log(this._event)
-      const jobData = []
+      const { ReceiptHandle, Body } = this._event
+      const { data } = JSON.parse(Body)
+      const { SPResults: jobData, client, job } = data
       if (Boolean(jobData) && jobData.length) {
+        console.log(jobData)
         this._currentJobData = jobData
         console.log('Processing Data: ', jobData.length)
         const self = this
@@ -17,28 +18,38 @@ export class BestDarnSystemUpdateTaskHandler extends AbstractHandler {
             const result = await self.updateBestDarnTask(data)
             self._successQueue.push({ data: data, result: result })
           } catch (error) {
-            console.error('Failure for: ', data, '\nError: ', error)
-            if (self.isClientError(error)) {
-              self._notifyQueue.push({ data: data, error: error })
-            } else {
-              self._failedQueue.push({ data: data, error: error })
-            }
+            // console.error('Failure for: ', data, '\nError: ', error.response)
+            self._failedData.push(data)
+            self._failedQueue.push({ data: data, error: error })
           }
         }))
       } else {
         console.log('No available data to process!')
       }
-      if (this._failedQueue.length > 0) {
-        await this.handleFailedQueue()
-      }
 
-      if (this._notifyQueue.length > 0) {
-        await this.handleNotifyQueue()
+      if (this._successQueue.length > 0) {
+        const { Parameter: { Value: SPJobsQueueUrl } } = await helper.get_ssm_param('JOBS_QUEUE_URL')
+
+        console.log(ReceiptHandle)
+        await helper.delete_success_job(SPJobsQueueUrl, ReceiptHandle)
+
+        if (this._failedData.length > 0) {
+          const jobData = {
+            data: { client, job, SPResults: this._failedQueue }
+          }
+          console.log('Failed data : ', jobData)
+
+          const queueResult = await helper.enqueue_sp_results(SPJobsQueueUrl, jobData)
+          console.log(queueResult)
+          console.log('Failed data added to Jobs Queue')
+        }
       }
+      // if (this._notifyQueue.length > 0) {
+      //   await this.handleNotifyQueue()
+      // }
       callback(null, {
         'success': this._successQueue,
-        'fail': this._failedQueue,
-        'notify': this._notifyQueue
+        'fail': this._failedQueue
       })
     } catch (error) {
       console.error(error)
@@ -57,7 +68,7 @@ export class BestDarnSystemUpdateTaskHandler extends AbstractHandler {
     console.log('Response:\n', bestdarnSystemAxios.defaults.baseURL + updateUrlPath, '\n',
       response.hasOwnProperty('data') && response.data ? response.data : response)
 
-    if (response.hasOwnProperty('message') && response.status === 200) {
+    if (response.hasOwnProperty('data') && response.status === 200) {
       return response
     }
     throw new Error(response.data)

@@ -40,12 +40,12 @@ provider:
       Resource:
         - "arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:${self:custom.snsTopicName}"
     - Effect: "Allow"
-        Action:
-          - sqs:DeleteMessage
-          - sqs:GetQueueUrl
-          - sqs:SendMessage
-          - sqs:GetQueueAttributes
-        Resource: "arn:aws:sqs:${self:provider.region}:*:JobsQueue"
+      Action:
+        - sqs:DeleteMessage
+        - sqs:GetQueueUrl
+        - sqs:SendMessage
+        - sqs:GetQueueAttributes
+      Resource: "arn:aws:sqs:${self:provider.region}:*:JobsQueue"
     - Effect: "Allow"
       Action:
         - sqs:DeleteMessage

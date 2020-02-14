@@ -9,6 +9,7 @@ class AbstractHandler {
     }
     this._event = event
     this._context = context
+    this._failedData = []
     this._failedQueue = []
     this._notifyQueue = []
     this._successQueue = []
@@ -221,13 +222,6 @@ class AbstractHandler {
         job: this.getContextLocalData('jobInfo'),
         event: event,
         error: error
-      }
-      if (Boolean(this._currentJobData) && this._currentJobData.length > 0) {
-        await helper.enqueue_current_job_data(
-          this._currentJobData,
-          this._context.functionName
-        )
-        jobError.currentData = this._currentJobData
       }
       await helper.notify_on_error(jobError)
     } else if (this.isReinvoked()) {
