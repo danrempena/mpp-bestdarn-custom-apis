@@ -9,7 +9,6 @@ export class BestDarnSystemUpdateTaskHandler extends AbstractHandler {
       const { data } = JSON.parse(Body)
       const { SPResults: jobData, client, job } = data
       if (Boolean(jobData) && jobData.length) {
-        console.log(jobData)
         this._currentJobData = jobData
         console.log('Processing Data: ', jobData.length)
         const self = this
@@ -18,42 +17,35 @@ export class BestDarnSystemUpdateTaskHandler extends AbstractHandler {
             const result = await self.updateBestDarnTask(data)
             self._successQueue.push({ data: data, result: result })
           } catch (error) {
-            // console.error('Failure for: ', data, '\nError: ', error.response)
+            console.error('Failure for: ', data, '\nError: \nresponse: ', error.response)
             self._failedData.push(data)
-            self._failedQueue.push({ data: data, error: error })
           }
         }))
       } else {
         console.log('No available data to process!')
       }
-
       if (this._successQueue.length > 0) {
         const { Parameter: { Value: SPJobsQueueUrl } } = await helper.get_ssm_param('JOBS_QUEUE_URL')
-
-        console.log(ReceiptHandle)
         await helper.delete_success_job(SPJobsQueueUrl, ReceiptHandle)
 
         if (this._failedData.length > 0) {
           const jobData = {
-            data: { client, job, SPResults: this._failedQueue }
+            data: { client, job, SPResults: this._failedData }
           }
-          console.log('Failed data : ', jobData)
-
-          const queueResult = await helper.enqueue_sp_results(SPJobsQueueUrl, jobData)
-          console.log(queueResult)
-          console.log('Failed data added to Jobs Queue')
+          try {
+            const queueResult = await helper.enqueue_sp_results(SPJobsQueueUrl, jobData)
+            console.log('Data fails added to Jobs Queue : ', queueResult)
+          } catch (error) {
+            console.error('Error on adding queue: ', error)
+          }
         }
       }
       // if (this._notifyQueue.length > 0) {
       //   await this.handleNotifyQueue()
       // }
-      callback(null, {
-        'success': this._successQueue,
-        'fail': this._failedQueue
-      })
+      callback(null, 'Success')
     } catch (error) {
       console.error(error)
-      await this.handleFailure(error)
       callback(error)
     }
   }
@@ -63,6 +55,7 @@ export class BestDarnSystemUpdateTaskHandler extends AbstractHandler {
     const { taskId, dateDue } = data
     let configRequest = { 'date_due': dateDue }
     const updateUrlPath = jobInfo.targetEndpoint.replace('[task_id]', taskId)
+
     const response = await bestdarnSystemAxios.post(updateUrlPath, configRequest)
     console.log('Request:\n', bestdarnSystemAxios.defaults.baseURL + updateUrlPath, '\n', configRequest)
     console.log('Response:\n', bestdarnSystemAxios.defaults.baseURL + updateUrlPath, '\n',
